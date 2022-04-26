@@ -17,3 +17,10 @@ Critérios avaliadas:
     - A documentação necessária sobre os campos da base está disponível nos demais diretórios dentro da pasta descompactada.
 3. Realizar o ETL dessa base em Python para o MySQL no container
 4. Disponibilizar o link do seu repositório para posterior avaliação
+
+### Modelagem dimensional:
+![](figures/Modelagem.png)
+### Execução
+2. Copiar o arquivo MICRODADOS_ENEM_2020.csv para o diretório import_data
+3. Executar docker-compose up no terminal
+

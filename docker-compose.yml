@@ -1,10 +1,25 @@
-version: "3.9"
+version: "3.7"
 services:
     db:
         image: "mcr.microsoft.com/mssql/server"
+        container_name: mssql_server
+        user: root
         environment:
-
             SA_PASSWORD: "Your_password123"
             ACCEPT_EULA: "Y"
         ports:
             - 1433:1433
+        # volumes:
+        #     - ./data/mssql:/var/opt/mssql/data
+
+    etl:
+        build:
+            context: .
+            dockerfile: Dockerfile
+        container_name: etl_enem
+        depends_on:
+            - db
+        ports:
+            - 7000:7000
+        volumes:
+            - ./import_data:/res
