@@ -15,6 +15,25 @@ def get_connection():
 
 def create_table(cnxn):
     cursor = cnxn.cursor()
+
+    cursor.execute('''
+        CREATE TABLE MUNICIPIO (
+                CO_MUNICIPIO BIGINT PRIMARY KEY,
+                NO_MUNICIPIO VARCHAR(150),
+                CO_UF INTEGER,
+                SG_UF VARCHAR(2)
+        );
+    ''')
+    cnxn.commit()
+
+    cursor.execute('''
+        CREATE TABLE PROVA (
+                CO_PROVA INTEGER PRIMARY KEY,
+                TX_GABARITO VARCHAR(50)
+        );
+    ''')
+    cnxn.commit()
+
     cursor.execute('''
         CREATE TABLE PARTICIPANTE (
                 NU_INSCRICAO BIGINT PRIMARY KEY,
@@ -30,40 +49,30 @@ def create_table(cnxn):
                 TP_ENSINO INTEGER,
                 IN_TREINEIRO INTEGER,
 
-                CO_MUNICIPIO_ESC INTEGER,
-                NO_MUNICIPIO_ESC VARCHAR(150),
-                CO_UF_ESC INTEGER,
-                SG_UF_ESC VARCHAR(2),
+                CO_MUNICIPIO_ESC BIGINT FOREIGN KEY REFERENCES MUNICIPIO(CO_MUNICIPIO),
                 TP_DEPENDENCIA_ADM_ESC INTEGER,
                 TP_LOCALIZACAO_ESC INTEGER,
                 TP_SIT_FUNC_ESC INTEGER,
 
-                CO_MUNICIPIO_PROVA INTEGER,
-                NO_MUNICIPIO_PROVA VARCHAR(150),
-                CO_UF_PROVA INTEGER,
-                SG_UF_PROVA VARCHAR(2),
+                CO_MUNICIPIO_PROVA BIGINT FOREIGN KEY REFERENCES MUNICIPIO(CO_MUNICIPIO),
 
                 TP_PRESENCA_CN INTEGER,
                 TP_PRESENCA_CH INTEGER,
                 TP_PRESENCA_LC INTEGER,
                 TP_PRESENCA_MT INTEGER,
-                CO_PROVA_CN INTEGER,
-                CO_PROVA_CH INTEGER,
-                CO_PROVA_LC INTEGER,
-                CO_PROVA_MT INTEGER,
-                NU_NOTA_CN INTEGER,
-                NU_NOTA_CH INTEGER,
-                NU_NOTA_LC INTEGER,
-                NU_NOTA_MT INTEGER,
+                CO_PROVA_CN INTEGER FOREIGN KEY REFERENCES PROVA(CO_PROVA),
+                CO_PROVA_CH INTEGER FOREIGN KEY REFERENCES PROVA(CO_PROVA),
+                CO_PROVA_LC INTEGER FOREIGN KEY REFERENCES PROVA(CO_PROVA),
+                CO_PROVA_MT INTEGER FOREIGN KEY REFERENCES PROVA(CO_PROVA),
+                NU_NOTA_CN FLOAT,
+                NU_NOTA_CH FLOAT,
+                NU_NOTA_LC FLOAT,
+                NU_NOTA_MT FLOAT,
                 TX_RESPOSTAS_CN VARCHAR(45),
                 TX_RESPOSTAS_CH VARCHAR(45),
                 TX_RESPOSTAS_LC VARCHAR(45),
                 TX_RESPOSTAS_MT VARCHAR(45),
                 TP_LINGUA INTEGER,
-                TX_GABARITO_CN VARCHAR(45),
-                TX_GABARITO_CH VARCHAR(45),
-                TX_GABARITO_LC VARCHAR(50),
-                TX_GABARITO_MT VARCHAR(45),
 
                 TP_STATUS_REDACAO INTEGER,
                 NU_NOTA_COMP1 FLOAT,
@@ -144,9 +153,51 @@ def cleaning(data):
 
     return data
 
-def insert(data, cnxn):
+def insert(data, cnxn, lista_provas, lista_municipios):
     cursor = cnxn.cursor()
 
+
+    #INSERT IN MUNICIPIO TABLE
+    data_values = ''
+    for t in ['ESC', 'PROVA']:
+        codes = data[ ~data['CO_MUNICIPIO_'+t].isin(lista_municipios) & data['CO_MUNICIPIO_'+t].notna() ]['CO_MUNICIPIO_'+t].unique()
+        lista_municipios += list(codes)
+        for code in codes:
+            row = data[data['CO_MUNICIPIO_'+t] == code].iloc[0]
+            string = str(list(row[['CO_MUNICIPIO_'+t, 'NO_MUNICIPIO_'+t, 'CO_UF_'+t, 'SG_UF_'+t]])) + ", "
+            data_values += string.replace('[', '(').replace(']', ')')    
+
+    data_values = data_values[:-2]
+    data_values = data_values.replace(" nan,", " NULL,").replace(" na,", " NULL,")
+    data_values = data_values.replace(" nan)", " NULL)").replace(" na)", " NULL)")
+    data_columns = '(CO_MUNICIPIO, NO_MUNICIPIO, CO_UF, SG_UF)'
+
+    cursor.execute("INSERT INTO MUNICIPIO "+data_columns+" VALUES "+data_values+";")
+    cnxn.commit()
+
+    #INSERT IN PROVA TABLE
+    data_values = ''
+    for t in ['CN', 'CH', 'LC', 'MT'] :
+        codes = data[ ~data['CO_PROVA_'+t].isin(lista_provas) & data['CO_PROVA_'+t].notna() ]['CO_PROVA_'+t].unique()
+        lista_provas += list(codes)
+        for code in codes:
+            row = data[data['CO_PROVA_'+t] == code].iloc[0]
+            string = str(list(row[['CO_PROVA_'+t, 'TX_GABARITO_'+t]])) + ", "
+            data_values += string.replace('[', '(').replace(']', ')')
+            # data_values += '(' + str(row['CO_PROVA_'+t]) + ', ' + str(row['TX_GABARITO_'+t]) + '), '
+    
+    data_values = data_values[:-2]
+    data_values = data_values.replace(" nan,", " NULL,").replace(" na,", " NULL,")
+    data_values = data_values.replace(" nan)", " NULL)").replace(" na)", " NULL)")
+    data_columns = '(CO_PROVA, TX_GABARITO)'
+
+    cursor.execute("INSERT INTO PROVA "+data_columns+" VALUES "+data_values+";")
+    cnxn.commit()
+
+    #INSERT IN PARTICIPANTE TABLE
+    remove_list = ['NO_MUNICIPIO_PROVA', 'CO_UF_PROVA', 'SG_UF_PROVA', 'NO_MUNICIPIO_ESC', 'CO_UF_ESC', 'SG_UF_ESC',
+                    'TX_GABARITO_CN', 'TX_GABARITO_CH', 'TX_GABARITO_LC', 'TX_GABARITO_MT']
+    data = data.drop(remove_list, axis = 1)
     data_columns = str(list(data.columns))
     data_columns = data_columns.replace('[', '(').replace(']', ')').replace("'", "")
     data_values = str(list(data.itertuples(index=False, name=None)))
@@ -157,22 +208,35 @@ def insert(data, cnxn):
     cursor.execute("INSERT INTO PARTICIPANTE "+data_columns+" VALUES "+data_values+";")
     cnxn.commit()
 
+    return lista_provas, lista_municipios
+
 def load_data():
     cnxn = get_connection()
     create_table(cnxn)
+
+    lista_municipios, lista_provas = [], []
     CHUNCK_SIZE = 1000
-    reader = pd.read_csv('MICRODADOS_ENEM_2020.csv', sep=';', encoding='unicode_escape', chunksize = CHUNCK_SIZE)
+    reader = pd.read_csv('MICRODADOS_ENEM_2020.csv', sep=';', encoding = 'utf-8', chunksize = CHUNCK_SIZE)
     for data in reader:
         data = cleaning(data)
-        insert(data, cnxn)
+        lista_provas, lista_municipios = insert(data, cnxn, lista_provas, lista_municipios)
     cnxn.close()
 
 def print_top():
     cnxn = get_connection()
     cursor = cnxn.cursor()
-    cursor.execute('SELECT TOP 10 NU_INSCRICAO FROM PARTICIPANTE;')
+    cursor.execute('SELECT TOP 5 CO_MUNICIPIO FROM MUNICIPIO;')
     for row in cursor:
         print(row)
+
+    cursor.execute('SELECT TOP 5 CO_PROVA FROM PROVA;')
+    for row in cursor:
+        print(row)
+
+    cursor.execute('SELECT TOP 5 NU_INSCRICAO FROM PARTICIPANTE;')
+    for row in cursor:
+        print(row)
+
     cnxn.close()
 
 load_data()
